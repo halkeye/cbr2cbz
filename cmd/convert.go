@@ -75,7 +75,7 @@ var convertCmd = &cobra.Command{
 			size := strings.TrimSuffix(filepath.Base(cbrFile), filepath.Ext(cbrFile))
 			cbzFile := filepath.Join(filepath.Dir(cbrFile), size+".cbz")
 
-			convert(cbrFile, cbzFile)
+			err = convert(cbrFile, cbzFile)
 
 			if err != nil {
 				log.Printf("Error Reading %s - Skipping...\n", cbrFile)

@@ -180,13 +180,19 @@ func getFileStats(suffix string, paths ...string) (uint64, uint32, error) {
 	var count uint32
 	for _, path := range paths {
 		err := filepath.Walk(path, func(filename string, _ os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
 			if !strings.HasSuffix(strings.ToLower(filename), suffix) {
 				return nil
 			}
+
 			info, err := os.Stat(filename)
 			if err != nil {
 				return err
 			}
+
 			size += uint64(info.Size())
 			count += 1
 			return nil

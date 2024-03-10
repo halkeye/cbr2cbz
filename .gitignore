@@ -28,6 +28,8 @@ go.work
 #
 cbr2cbz.log
 *.cbr
+!fixtures/*.cbr
 *.cbz
+!fixtures/*.cbz
 
 dist/

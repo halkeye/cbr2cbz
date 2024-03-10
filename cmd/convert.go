@@ -90,7 +90,7 @@ var convertCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(convertCmd)
 
-	convertCmd.PersistentFlags().StringVar(&logFileName, "log-file", "cbr2cbz.log", "log file")
+	convertCmd.Flags().StringVar(&logFileName, "log-file", "cbr2cbz.log", "log file")
 }
 
 func findCBRFiles(root string) ([]string, error) {

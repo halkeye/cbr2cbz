@@ -29,3 +29,5 @@ go.work
 cbr2cbz.log
 *.cbr
 *.cbz
+
+dist/

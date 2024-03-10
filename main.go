@@ -187,6 +187,11 @@ func convert(cbrFile, cbzFile string) error {
 		return errors.Wrap(err, "unable to archive zip")
 	}
 
+	err = os.Remove(cbrFile)
+	if err != nil {
+		return errors.Wrap(err, "deleting old cbr")
+	}
+
 	fileInfo, err := os.Stat(cbzFile)
 	if err != nil {
 		return errors.Wrap(err, "looking up newly created zip size")

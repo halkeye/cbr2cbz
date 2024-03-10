@@ -26,28 +26,25 @@ var convertCmd = &cobra.Command{
 	Short: "Converts one or more files",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		logger := log.Default()
+
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			panic(err)
 		}
 		mw := io.MultiWriter(os.Stdout, logFile)
-		log.SetOutput(mw)
+		logger.SetOutput(mw)
 
 		fsys := hackpados.NewFS()
 
-		cbrFiles := []string{}
-
-		for _, paths := range args {
-			files, err := findCBRFiles(fsys, paths)
-			if err != nil {
-				log.Fatal(err)
-			}
-			cbrFiles = append(cbrFiles, files...)
+		c := converter{
+			fs:     fsys,
+			logger: logger,
 		}
 
-		err = runConvert(cmd.Context(), fsys, cbrFiles)
+		err = c.runConvert(cmd.Context(), args)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(err)
 		}
 	},
 }
@@ -58,53 +55,67 @@ func init() {
 	convertCmd.Flags().StringVar(&logFileName, "log-file", "cbr2cbz.log", "log file")
 }
 
-func runConvert(context context.Context, fsys hackpadfs.FS, cbrFiles []string) error {
+type converter struct {
+	fs     hackpadfs.FS
+	logger logger
+}
+
+type logger interface {
+	Printf(format string, v ...any)
+	Println(v ...any)
+}
+
+func (c converter) runConvert(context context.Context, paths []string) error {
 	failedFiles := map[string]error{}
 	startTime := time.Now()
+
+	cbrFiles := []string{}
+	for _, paths := range paths {
+		files, err := findCBRFiles(c.fs, paths)
+		if err != nil {
+			return errors.Wrap(err, "getting list of cbr files")
+		}
+		cbrFiles = append(cbrFiles, files...)
+	}
 
 	if len(cbrFiles) == 0 {
 		return errors.New("No files to convert!")
 	}
 
-	totalSize, totalCount, err := getFileStats(fsys, "", cbrFiles...)
+	totalSize, totalCount, err := getFileStats(c.fs, "", cbrFiles...)
 	if err != nil {
 		return errors.Wrap(err, "getting non cbr file stats")
 	}
 
-	cbrSize, cbrCount, err := getFileStats(fsys, ".cbr", cbrFiles...)
+	cbrSize, cbrCount, err := getFileStats(c.fs, ".cbr", cbrFiles...)
 	if err != nil {
 		return errors.Wrap(err, "getting cbr file stats")
 	}
 
-	log.Printf("CBR2CBZ Batch Log\n")
-	log.Printf("Version %s\n", version)
-	log.Printf("You can check for script updates at https://github.com/halkeye/cbr2cbz (original bash version at https://git.zaks.web.za/thisiszeev/cbr2cbz)\n")
-	log.Printf("Batch Start Date & Time: %s\n", time.Now().Format(time.RFC3339))
-	log.Printf("\n")
-	log.Printf("Considering %d files (%s)\n", totalCount, humanize.Bytes(totalSize))
-	log.Printf("   of which...\n")
-	log.Printf("Non CBR files: %d (%s)\n", totalCount-cbrCount, humanize.Bytes(totalSize-cbrSize))
-	log.Printf("CBR files: %d (%s)\n", len(cbrFiles), humanize.Bytes(cbrSize))
+	c.logger.Printf("CBR2CBZ Batch Log\n")
+	c.logger.Printf("Version %s\n", version)
+	c.logger.Printf("You can check for script updates at https://github.com/halkeye/cbr2cbz (original bash version at https://git.zaks.web.za/thisiszeev/cbr2cbz)\n")
+	c.logger.Printf("Batch Start Date & Time: %s\n", time.Now().Format(time.RFC3339))
+	c.logger.Printf("\n")
+	c.logger.Printf("Considering %d files (%s)\n", totalCount, humanize.Bytes(totalSize))
+	c.logger.Printf("   of which...\n")
+	c.logger.Printf("Non CBR files: %d (%s)\n", totalCount-cbrCount, humanize.Bytes(totalSize-cbrSize))
+	c.logger.Printf("CBR files: %d (%s)\n", len(cbrFiles), humanize.Bytes(cbrSize))
 
 	for _, cbrFile := range cbrFiles {
-		cbrFile, err := filepath.Abs(cbrFile)
-		if err != nil {
-			return errors.Wrap(err, "getting abs")
-		}
-
 		size := strings.TrimSuffix(filepath.Base(cbrFile), filepath.Ext(cbrFile))
 		cbzFile := filepath.Join(filepath.Dir(cbrFile), size+".cbz")
 
-		err = convert(context, fsys, cbrFile, cbzFile)
+		err = c.convert(context, cbrFile, cbzFile)
 
 		if err != nil {
-			log.Printf("Error Reading %s - Skipping...\n", cbrFile)
+			c.logger.Printf("Error Reading %s - Skipping...%s\n", cbrFile, err.Error())
 			failedFiles[cbrFile] = err
 			continue
 		}
 	}
 
-	printStats(startTime, failedFiles)
+	c.printStats(startTime, failedFiles)
 
 	return nil
 }
@@ -124,19 +135,19 @@ func findCBRFiles(fsys hackpadfs.FS, root string) ([]string, error) {
 	return files, err
 }
 
-func convert(ctx context.Context, fsys hackpadfs.FS, cbrFile string, cbzFile string) error {
-	log.Printf("Converting: %s to %s\n", cbrFile, cbzFile)
+func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) error {
+	c.logger.Printf("Converting: %s to %s\n", cbrFile, cbzFile)
 
-	info, err := fs.Stat(fsys, cbrFile)
+	info, err := fs.Stat(c.fs, cbrFile)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "stating file")
 	}
 
 	if info.IsDir() {
 		return errors.New("is a directory")
 	}
 
-	file, err := fsys.Open(cbrFile)
+	file, err := c.fs.Open(cbrFile)
 	if err != nil {
 		return errors.Wrap(err, "trying to open cbr")
 	}
@@ -151,7 +162,8 @@ func convert(ctx context.Context, fsys hackpadfs.FS, cbrFile string, cbzFile str
 		return errors.New("not a rar file")
 	}
 
-	rarFS := archiver.ArchiveFS{Path: cbrFile, Format: archiver.Rar{}, Context: ctx}
+	inputStream := io.NewSectionReader(file.(io.ReaderAt), 0, info.Size())
+	rarFS := archiver.ArchiveFS{Stream: inputStream, Format: archiver.Rar{}, Context: ctx}
 	// rarFS, err := archiver.FileSystem(ctx, cbrFile)
 	// if err != nil {
 	// 	return errors.Wrap(err, "unable to read cbr file")
@@ -188,7 +200,7 @@ func convert(ctx context.Context, fsys hackpadfs.FS, cbrFile string, cbzFile str
 	}
 
 	// create the output file we'll write to
-	outFile, err := hackpadfs.Create(fsys, cbzFile)
+	outFile, err := hackpadfs.Create(c.fs, cbzFile)
 	if err != nil {
 		return errors.Wrap(err, "unable to create zip")
 	}
@@ -205,14 +217,31 @@ func convert(ctx context.Context, fsys hackpadfs.FS, cbrFile string, cbzFile str
 		return errors.Wrap(err, "unable to archive zip")
 	}
 
-	err = os.Remove(cbrFile)
+	err = hackpadfs.Remove(c.fs, cbrFile)
 	if err != nil {
 		return errors.Wrap(err, "deleting old cbr")
 	}
 
-	log.Printf("Successfully Converted %s to %s...\n", cbrFile, cbzFile)
+	c.logger.Printf("Successfully Converted %s to %s...\n", cbrFile, cbzFile)
 
 	return nil
+}
+
+func (c converter) printStats(startTime time.Time, failedFiles map[string]error) {
+	runtime := humanize.RelTime(startTime, time.Now(), "", "")
+	c.logger.Println("Failed files:")
+
+	for filename, err := range failedFiles {
+		c.logger.Printf("\t%s\t%s", filename, err.Error())
+	}
+
+	if len(failedFiles) == 0 {
+		c.logger.Println("  none")
+	}
+
+	c.logger.Println("Runtime:", runtime)
+
+	c.logger.Printf("A log file has been written to %s\n", logFileName)
 }
 
 func getFileStats(fsys hackpadfs.FS, suffix string, paths ...string) (uint64, uint32, error) {
@@ -246,21 +275,4 @@ func getFileStats(fsys hackpadfs.FS, suffix string, paths ...string) (uint64, ui
 		}
 	}
 	return size, count, nil
-}
-
-func printStats(startTime time.Time, failedFiles map[string]error) {
-	runtime := humanize.RelTime(startTime, time.Now(), "", "")
-	log.Println("Failed files:")
-
-	for filename, err := range failedFiles {
-		log.Printf("\t%s\t%s", filename, err.Error())
-	}
-
-	if len(failedFiles) == 0 {
-		log.Println("  none")
-	}
-
-	log.Println("Runtime:", runtime)
-
-	log.Printf("A log file has been written to %s\n", logFileName)
 }

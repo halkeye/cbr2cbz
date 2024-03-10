@@ -24,6 +24,9 @@ var convertCmd = &cobra.Command{
 	Short: "Converts one or more files",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		failedFiles := map[string]error{}
+		startTime := time.Now()
+
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			panic(err)
@@ -79,11 +82,12 @@ var convertCmd = &cobra.Command{
 
 			if err != nil {
 				log.Printf("Error Reading %s - Skipping...\n", cbrFile)
-				failedFiles++
+				failedFiles[cbrFile] = err
+				continue
 			}
 		}
 
-		PrintStats()
+		PrintStats(startTime, failedFiles)
 	},
 }
 
@@ -107,17 +111,6 @@ func findCBRFiles(root string) ([]string, error) {
 	})
 	return files, err
 }
-
-func countNonCbrFiles(totalSize, cbrSize uint64) int {
-	return int(totalSize-cbrSize) / (1024 * 1024)
-}
-
-var (
-	convSize    int64
-	failedFiles int
-)
-
-var startTime = time.Now()
 
 func convert(cbrFile, cbzFile string) error {
 	log.Printf("Converting: %s to %s\n", cbrFile, cbzFile)
@@ -177,12 +170,6 @@ func convert(cbrFile, cbzFile string) error {
 		return errors.Wrap(err, "deleting old cbr")
 	}
 
-	fileInfo, err := os.Stat(cbzFile)
-	if err != nil {
-		return errors.Wrap(err, "looking up newly created zip size")
-	}
-	convSize += fileInfo.Size()
-
 	log.Printf("Successfully Converted %s to %s...\n", cbrFile, cbzFile)
 
 	return nil
@@ -212,15 +199,15 @@ func getFileStats(suffix string, paths ...string) (uint64, uint32, error) {
 	return size, count, nil
 }
 
-func PrintStats() {
+func PrintStats(startTime time.Time, failedFiles map[string]error) {
 	runtime := humanize.RelTime(startTime, time.Now(), "", "")
 	log.Println("Failed files:")
 
-	for i := 0; i < failedFiles; i++ {
-		log.Printf("  // Skipped due to errors")
+	for filename, err := range failedFiles {
+		log.Printf("\t%s\t%s", filename, err.Error())
 	}
 
-	if failedFiles == 0 {
+	if len(failedFiles) == 0 {
 		log.Println("  none")
 	}
 

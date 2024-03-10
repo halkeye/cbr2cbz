@@ -15,7 +15,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-const version = "v0.1.0"
+const version string = "v0.1.0"
 const (
 	tmpDir      = "/tmp/cbr2cbz"
 	logFileName = "cbr2cbz.log"

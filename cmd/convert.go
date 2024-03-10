@@ -87,7 +87,7 @@ var convertCmd = &cobra.Command{
 			}
 		}
 
-		PrintStats(startTime, failedFiles)
+		printStats(startTime, failedFiles)
 	},
 }
 
@@ -205,7 +205,7 @@ func getFileStats(suffix string, paths ...string) (uint64, uint32, error) {
 	return size, count, nil
 }
 
-func PrintStats(startTime time.Time, failedFiles map[string]error) {
+func printStats(startTime time.Time, failedFiles map[string]error) {
 	runtime := humanize.RelTime(startTime, time.Now(), "", "")
 	log.Println("Failed files:")
 

@@ -270,10 +270,8 @@ func PrintStats() {
 	runtime := calculateRuntime()
 	fmt.Println()
 
-	if failedFiles > 0 {
-		fmt.Println("Failed files:")
-		log.Println("Failed files:")
-	}
+	fmt.Println("Failed files:")
+	log.Println("Failed files:")
 
 	for i := 0; i < failedFiles; i++ {
 		fmt.Println(fmt.Sprintf("  // Skipped due to errors"))

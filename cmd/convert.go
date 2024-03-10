@@ -24,9 +24,6 @@ var convertCmd = &cobra.Command{
 	Short: "Converts one or more files",
 	Args:  cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		failedFiles := map[string]error{}
-		startTime := time.Now()
-
 		logFile, err := os.OpenFile(logFileName, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			panic(err)
@@ -44,50 +41,10 @@ var convertCmd = &cobra.Command{
 			cbrFiles = append(cbrFiles, files...)
 		}
 
-		if len(cbrFiles) == 0 {
-			log.Fatal("No files to convert!")
-			return
-		}
-
-		totalSize, totalCount, err := getFileStats("", cbrFiles...)
+		err = runConvert(cmd.Context(), cbrFiles)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		cbrSize, cbrCount, err := getFileStats(".cbr", cbrFiles...)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		log.Printf("CBR2CBZ Batch Log\n")
-		log.Printf("Version %s\n", version)
-		log.Printf("You can check for script updates at https://github.com/halkeye/cbr2cbz (original bash version at https://git.zaks.web.za/thisiszeev/cbr2cbz)\n")
-		log.Printf("Batch Start Date & Time: %s\n", time.Now().Format(time.RFC3339))
-		log.Printf("\n")
-		log.Printf("Considering %d files (%s)\n", totalCount, humanize.Bytes(totalSize))
-		log.Printf("   of which...\n")
-		log.Printf("Non CBR files: %d (%s)\n", totalCount-cbrCount, humanize.Bytes(totalSize-cbrSize))
-		log.Printf("CBR files: %d (%s)\n", len(cbrFiles), humanize.Bytes(cbrSize))
-
-		for _, cbrFile := range cbrFiles {
-			cbrFile, err := filepath.Abs(cbrFile)
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			size := strings.TrimSuffix(filepath.Base(cbrFile), filepath.Ext(cbrFile))
-			cbzFile := filepath.Join(filepath.Dir(cbrFile), size+".cbz")
-
-			err = convert(cbrFile, cbzFile)
-
-			if err != nil {
-				log.Printf("Error Reading %s - Skipping...\n", cbrFile)
-				failedFiles[cbrFile] = err
-				continue
-			}
-		}
-
-		printStats(startTime, failedFiles)
 	},
 }
 
@@ -95,6 +52,57 @@ func init() {
 	rootCmd.AddCommand(convertCmd)
 
 	convertCmd.Flags().StringVar(&logFileName, "log-file", "cbr2cbz.log", "log file")
+}
+
+func runConvert(context context.Context, cbrFiles []string) error {
+	failedFiles := map[string]error{}
+	startTime := time.Now()
+
+	if len(cbrFiles) == 0 {
+		return errors.New("No files to convert!")
+	}
+
+	totalSize, totalCount, err := getFileStats("", cbrFiles...)
+	if err != nil {
+		return err
+	}
+
+	cbrSize, cbrCount, err := getFileStats(".cbr", cbrFiles...)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("CBR2CBZ Batch Log\n")
+	log.Printf("Version %s\n", version)
+	log.Printf("You can check for script updates at https://github.com/halkeye/cbr2cbz (original bash version at https://git.zaks.web.za/thisiszeev/cbr2cbz)\n")
+	log.Printf("Batch Start Date & Time: %s\n", time.Now().Format(time.RFC3339))
+	log.Printf("\n")
+	log.Printf("Considering %d files (%s)\n", totalCount, humanize.Bytes(totalSize))
+	log.Printf("   of which...\n")
+	log.Printf("Non CBR files: %d (%s)\n", totalCount-cbrCount, humanize.Bytes(totalSize-cbrSize))
+	log.Printf("CBR files: %d (%s)\n", len(cbrFiles), humanize.Bytes(cbrSize))
+
+	for _, cbrFile := range cbrFiles {
+		cbrFile, err := filepath.Abs(cbrFile)
+		if err != nil {
+			return err
+		}
+
+		size := strings.TrimSuffix(filepath.Base(cbrFile), filepath.Ext(cbrFile))
+		cbzFile := filepath.Join(filepath.Dir(cbrFile), size+".cbz")
+
+		err = convert(context, cbrFile, cbzFile)
+
+		if err != nil {
+			log.Printf("Error Reading %s - Skipping...\n", cbrFile)
+			failedFiles[cbrFile] = err
+			continue
+		}
+	}
+
+	printStats(startTime, failedFiles)
+
+	return nil
 }
 
 func findCBRFiles(root string) ([]string, error) {
@@ -112,9 +120,8 @@ func findCBRFiles(root string) ([]string, error) {
 	return files, err
 }
 
-func convert(cbrFile, cbzFile string) error {
+func convert(ctx context.Context, cbrFile string, cbzFile string) error {
 	log.Printf("Converting: %s to %s\n", cbrFile, cbzFile)
-	ctx := context.TODO()
 
 	rarFS, err := archiver.FileSystem(ctx, cbrFile)
 	if err != nil {

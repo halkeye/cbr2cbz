@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	version     = "0.6"
+	version     = "v0.1.0"
 	tmpDir      = "/tmp/cbr2cbz"
 	logFileName = "cbr2cbz.log"
 )

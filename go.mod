@@ -3,6 +3,7 @@ module github.com/halkeye/cbr2cbz
 go 1.22.0
 
 require (
+	github.com/carlmjohnson/versioninfo v0.22.5
 	github.com/dustin/go-humanize v1.0.1
 	github.com/mholt/archiver/v4 v4.0.0-alpha.8
 	github.com/pkg/errors v0.9.1

@@ -102,7 +102,7 @@ func (c converter) runConvert(context context.Context, paths []string) error {
 	}
 
 	c.logger.Printf("CBR2CBZ Batch Log\n")
-	c.logger.Printf("Version %s\n", version)
+	c.logger.Printf("Version %s\n", rootCmd.Version)
 	c.logger.Printf("You can check for script updates at https://github.com/halkeye/cbr2cbz (original bash version at https://git.zaks.web.za/thisiszeev/cbr2cbz)\n")
 	c.logger.Printf("Batch Start Date & Time: %s\n", time.Now().Format(time.RFC3339))
 	c.logger.Printf("\n")

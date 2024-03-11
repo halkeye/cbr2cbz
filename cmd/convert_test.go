@@ -71,27 +71,27 @@ func Test_runConvert(t *testing.T) {
 			fixtures: filenameBytes{
 				"is-zip.cbr": notrealCBRContents,
 			},
-			fileList: []string{"is-zip.cbr"},
+			fileList: []string{"is-zip.cbz"},
 			wantErr:  false,
 		},
 		{
 			name: "recursive",
 			args: args{cbrFiles: []string{"."}},
 			fixtures: filenameBytes{
-				"test.cbr":   realCBRContents,
-				"is-zip.cbr": notrealCBRContents,
+				"test.cbr":  realCBRContents,
+				"test1.cbr": realCBRContents,
 			},
-			fileList: []string{"test.cbz", "is-zip.cbr"},
+			fileList: []string{"test.cbz", "test1.cbz"},
 			wantErr:  false,
 		},
 		{
 			name: "fullpaths_dir",
 			args: args{cbrFiles: []string{"/path/to/dir"}},
 			fixtures: filenameBytes{
-				"path/to/dir/test.cbr":   realCBRContents,
-				"path/to/dir/is-zip.cbr": notrealCBRContents,
+				"path/to/dir/test.cbr":  realCBRContents,
+				"path/to/dir/test1.cbr": realCBRContents,
 			},
-			fileList: []string{"path/to/dir/test.cbz", "path/to/dir/is-zip.cbr"},
+			fileList: []string{"path/to/dir/test.cbz", "path/to/dir/test1.cbz"},
 			wantErr:  false,
 		},
 		{

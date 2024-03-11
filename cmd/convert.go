@@ -141,7 +141,7 @@ func findCBRFiles(fsys fs.FS, root string) ([]string, error) {
 		}
 
 		if !info.IsDir() && strings.ToLower(filepath.Ext(path)) == ".cbr" {
-			files = append(files, path)
+			files = append(files, "/"+path)
 		}
 		return nil
 	})
@@ -166,9 +166,15 @@ func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) 
 	}
 	defer file.Close()
 
-	format, _, err := archiver.Identify(filepath.Base(cbrFile), file)
+	format, _, err := archiver.Identify(pathToFsPath(cbrFile), file)
 	if err != nil && !errors.Is(err, archiver.ErrNoMatch) {
 		return errors.Wrap(err, "unable to identify")
+	}
+
+	if _, ok := format.(archiver.Zip); ok {
+		// secret zip file pretending to be rar
+		hackpadfs.Rename(c.fs, pathToFsPath(cbrFile), pathToFsPath(cbzFile))
+		return nil
 	}
 
 	if _, ok := format.(archiver.Rar); !ok {
@@ -253,12 +259,12 @@ func (c converter) printStats(startTime time.Time, failedFiles map[string]error)
 	c.logger.Printf("A log file has been written to %s\n", logFileName)
 }
 
-func getFileStats(fsys hackpadfs.FS, suffix string, paths ...string) (uint64, uint32, error) {
+func getFileStats(fsys hackpadfs.FS, ext string, paths ...string) (uint64, uint32, error) {
 	var size uint64
 	var count uint32
 
 	for _, path := range paths {
-		if !strings.HasSuffix(strings.ToLower(path), suffix) {
+		if len(ext) > 0 && strings.ToLower(filepath.Ext(path)) != ext {
 			continue
 		}
 

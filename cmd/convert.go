@@ -70,12 +70,21 @@ func (c converter) runConvert(context context.Context, paths []string) error {
 	startTime := time.Now()
 
 	cbrFiles := []string{}
-	for _, paths := range paths {
-		files, err := findCBRFiles(c.fs, paths)
+	for _, path := range paths {
+		stat, err := fs.Stat(c.fs, pathToFsPath(path))
 		if err != nil {
-			return errors.Wrap(err, "getting list of cbr files")
+			return errors.Wrap(err, "error looking up path")
 		}
-		cbrFiles = append(cbrFiles, files...)
+
+		if stat.IsDir() {
+			files, err := findCBRFiles(c.fs, filepath.Join(path, "."))
+			if err != nil {
+				return errors.Wrap(err, "finding cbrs")
+			}
+			cbrFiles = append(cbrFiles, files...)
+		} else {
+			cbrFiles = append(cbrFiles, path)
+		}
 	}
 
 	if len(cbrFiles) == 0 {
@@ -120,14 +129,18 @@ func (c converter) runConvert(context context.Context, paths []string) error {
 	return nil
 }
 
-func findCBRFiles(fsys hackpadfs.FS, root string) ([]string, error) {
+func pathToFsPath(path string) string {
+	return strings.TrimLeft(strings.TrimRight(path, "/"), "/")
+}
+
+func findCBRFiles(fsys fs.FS, root string) ([]string, error) {
 	var files []string
-	err := hackpadfs.WalkDir(fsys, root, func(path string, info fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, pathToFsPath(root), func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if !info.IsDir() && strings.HasSuffix(path, ".cbr") {
+		if !info.IsDir() && strings.ToLower(filepath.Ext(path)) == ".cbr" {
 			files = append(files, path)
 		}
 		return nil
@@ -138,7 +151,7 @@ func findCBRFiles(fsys hackpadfs.FS, root string) ([]string, error) {
 func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) error {
 	c.logger.Printf("Converting: %s to %s\n", cbrFile, cbzFile)
 
-	info, err := fs.Stat(c.fs, cbrFile)
+	info, err := fs.Stat(c.fs, pathToFsPath(cbrFile))
 	if err != nil {
 		return errors.Wrap(err, "stating file")
 	}
@@ -147,7 +160,7 @@ func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) 
 		return errors.New("is a directory")
 	}
 
-	file, err := c.fs.Open(cbrFile)
+	file, err := c.fs.Open(pathToFsPath(cbrFile))
 	if err != nil {
 		return errors.Wrap(err, "trying to open cbr")
 	}
@@ -164,10 +177,6 @@ func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) 
 
 	inputStream := io.NewSectionReader(file.(io.ReaderAt), 0, info.Size())
 	rarFS := archiver.ArchiveFS{Stream: inputStream, Format: archiver.Rar{}, Context: ctx}
-	// rarFS, err := archiver.FileSystem(ctx, cbrFile)
-	// if err != nil {
-	// 	return errors.Wrap(err, "unable to read cbr file")
-	// }
 
 	files := []archiver.File{}
 
@@ -200,7 +209,7 @@ func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) 
 	}
 
 	// create the output file we'll write to
-	outFile, err := hackpadfs.Create(c.fs, cbzFile)
+	outFile, err := hackpadfs.Create(c.fs, pathToFsPath(cbzFile))
 	if err != nil {
 		return errors.Wrap(err, "unable to create zip")
 	}
@@ -217,7 +226,7 @@ func (c converter) convert(ctx context.Context, cbrFile string, cbzFile string) 
 		return errors.Wrap(err, "unable to archive zip")
 	}
 
-	err = hackpadfs.Remove(c.fs, cbrFile)
+	err = hackpadfs.Remove(c.fs, pathToFsPath(cbrFile))
 	if err != nil {
 		return errors.Wrap(err, "deleting old cbr")
 	}
@@ -248,31 +257,18 @@ func getFileStats(fsys hackpadfs.FS, suffix string, paths ...string) (uint64, ui
 	var size uint64
 	var count uint32
 
-	handler := func(filename string, _ fs.DirEntry, err error) error {
-		if err != nil {
-			return err
+	for _, path := range paths {
+		if !strings.HasSuffix(strings.ToLower(path), suffix) {
+			continue
 		}
 
-		if !strings.HasSuffix(strings.ToLower(filename), suffix) {
-			return nil
-		}
-
-		info, err := fs.Stat(fsys, filename)
+		info, err := fs.Stat(fsys, pathToFsPath(path))
 		if err != nil {
-			return errors.Wrap(err, "get file stats for specific file")
+			return 0, 0, errors.Wrap(err, "get file stats for specific file")
 		}
 
 		size += uint64(info.Size())
 		count += 1
-		return nil
-	}
-
-	for _, path := range paths {
-		err := fs.WalkDir(fsys, path, handler)
-
-		if err != nil {
-			return size, count, errors.Wrap(err, "walking directory error")
-		}
 	}
 	return size, count, nil
 }

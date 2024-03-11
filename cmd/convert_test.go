@@ -28,7 +28,24 @@ func (l testLogger) Println(v ...any) {
 	l.t.Log(v...)
 }
 
+func absPathJoin(elem ...string) string {
+	path := filepath.Join(elem...)
+	path, err := filepath.Abs(path)
+	if err != nil {
+		panic(err)
+	}
+	return path
+}
+
+type filenameBytes map[string][]byte
+
 func Test_runConvert(t *testing.T) {
+	realCBRContents, err := os.ReadFile(absPathJoin("..", "fixtures", "test.cbr"))
+	require.NoError(t, err)
+
+	notrealCBRContents, err := os.ReadFile(absPathJoin("..", "fixtures", "is-zip.cbr"))
+	require.NoError(t, err)
+
 	type args struct {
 		cbrFiles []string
 	}
@@ -36,28 +53,54 @@ func Test_runConvert(t *testing.T) {
 		name     string
 		args     args
 		fileList []string
-		fixtures []string
+		fixtures filenameBytes
 		wantErr  bool
 	}{
 		{
-			name:     "legit cbr",
-			args:     args{cbrFiles: []string{"test.cbr"}},
-			fixtures: []string{"test.cbr"},
+			name: "legit cbr",
+			args: args{cbrFiles: []string{"test.cbr"}},
+			fixtures: filenameBytes{
+				"test.cbr": realCBRContents,
+			},
 			fileList: []string{"test.cbz"},
 			wantErr:  false,
 		},
 		{
-			name:     "is actually cbz",
-			args:     args{cbrFiles: []string{"is-zip.cbr"}},
-			fixtures: []string{"is-zip.cbr"},
+			name: "is actually cbz",
+			args: args{cbrFiles: []string{"is-zip.cbr"}},
+			fixtures: filenameBytes{
+				"is-zip.cbr": notrealCBRContents,
+			},
 			fileList: []string{"is-zip.cbr"},
 			wantErr:  false,
 		},
 		{
-			name:     "recursive",
-			args:     args{cbrFiles: []string{"."}},
-			fixtures: []string{"test.cbr", "is-zip.cbr"},
+			name: "recursive",
+			args: args{cbrFiles: []string{"."}},
+			fixtures: filenameBytes{
+				"test.cbr":   realCBRContents,
+				"is-zip.cbr": notrealCBRContents,
+			},
 			fileList: []string{"test.cbz", "is-zip.cbr"},
+			wantErr:  false,
+		},
+		{
+			name: "fullpaths_dir",
+			args: args{cbrFiles: []string{"/path/to/dir"}},
+			fixtures: filenameBytes{
+				"path/to/dir/test.cbr":   realCBRContents,
+				"path/to/dir/is-zip.cbr": notrealCBRContents,
+			},
+			fileList: []string{"path/to/dir/test.cbz", "path/to/dir/is-zip.cbr"},
+			wantErr:  false,
+		},
+		{
+			name: "fullpaths_file",
+			args: args{cbrFiles: []string{"/path/to/dir/test.cbr"}},
+			fixtures: filenameBytes{
+				"path/to/dir/test.cbr": realCBRContents,
+			},
+			fileList: []string{"path/to/dir/test.cbz"},
 			wantErr:  false,
 		},
 	}
@@ -71,16 +114,16 @@ func Test_runConvert(t *testing.T) {
 				logger: testLogger{t},
 			}
 
-			for _, path := range tt.fixtures {
+			for path, bytes := range tt.fixtures {
 				t.Logf("Adding %s to memfs", path)
+
+				err := hackpadfs.MkdirAll(fsys, filepath.Dir(path), fs.ModePerm)
+				require.NoError(t, err)
 
 				f, err := hackpadfs.Create(fsys, path)
 				require.NoError(t, err)
 
-				realContents, err := os.ReadFile(filepath.Join("..", "fixtures", path))
-				require.NoError(t, err)
-
-				_, err = hackpadfs.WriteFile(f, []byte(realContents))
+				_, err = hackpadfs.WriteFile(f, bytes)
 				assert.NoError(t, err)
 				assert.NoError(t, f.Close())
 			}
